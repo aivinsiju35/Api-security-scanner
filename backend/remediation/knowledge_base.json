@@ -1,0 +1,287 @@
+{
+  "API1": {
+    "owasp_id": "API1:2023",
+    "name": "Broken Object Level Authorization (BOLA)",
+    "description": "APIs tend to expose endpoints that handle object identifiers, creating a wide attack surface of Object Level Access Control issues. Object level authorization checks should be considered in every function that accesses a data source using an input from the user.",
+    "impact": "Attackers can read, modify, or delete other users' data by simply changing the object ID in requests. This leads to unauthorized data access, privacy violations, and potential financial fraud.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+    "remediation": {
+      "summary": "Implement proper object-level authorization on every endpoint that accesses data using user-supplied IDs.",
+      "steps": [
+        "Implement authorization checks on every API endpoint that accesses a data source using user-provided IDs",
+        "Use server-side policies to verify that the requesting user has permission to access the requested object",
+        "Replace sequential integer IDs with random, non-guessable UUIDs (e.g., UUID v4)",
+        "Never trust client-supplied object IDs — always validate ownership on the server",
+        "Log unauthorized access attempts and alert on anomalous patterns",
+        "Write automated tests to verify authorization for every endpoint"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: No ownership check\n@app.get('/api/orders/{order_id}')\nasync def get_order(order_id: int, token: str):\n    user = decode_token(token)\n    order = db.get_order(order_id)  # Returns ANY order!\n    return order",
+        "secure": "# SECURE: Ownership verified\n@app.get('/api/orders/{order_id}')\nasync def get_order(order_id: int, token: str):\n    user = decode_token(token)\n    order = db.get_order(order_id)\n    if order.user_id != user.id:  # Verify ownership!\n        raise HTTPException(403, 'Forbidden')\n    return order"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+        "https://portswigger.net/web-security/access-control/idor",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+      ]
+    }
+  },
+  "API2": {
+    "owasp_id": "API2:2023",
+    "name": "Broken Authentication",
+    "description": "Authentication mechanisms are often implemented incorrectly, allowing attackers to compromise authentication tokens or exploit implementation flaws to assume other users' identities temporarily or permanently.",
+    "impact": "Full account takeover, unauthorized access to sensitive data, privilege escalation. A single compromised admin account can expose the entire system.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/",
+    "remediation": {
+      "summary": "Implement strong authentication with proper token validation, expiry, and brute-force protection.",
+      "steps": [
+        "Always verify JWT signatures using strong algorithms (RS256 or HS256) — never accept 'none' algorithm",
+        "Set short token expiry times (15-60 minutes for access tokens)",
+        "Implement refresh token rotation — invalidate old refresh tokens when new ones are issued",
+        "Add rate limiting and account lockout on login endpoints (e.g., 5 attempts → 15-minute lockout)",
+        "Implement multi-factor authentication (MFA) for sensitive operations",
+        "Never log or expose authentication tokens in URLs or error messages",
+        "Use HTTPS everywhere — never send credentials over HTTP",
+        "Invalidate tokens server-side on logout (use a token blocklist)"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: Accepts 'none' algorithm, no expiry check\ndef verify_token(token):\n    decoded = jwt.decode(token, options={'verify_signature': False})\n    return decoded",
+        "secure": "# SECURE: Strict verification with expiry\ndef verify_token(token):\n    try:\n        decoded = jwt.decode(\n            token,\n            SECRET_KEY,\n            algorithms=['HS256'],  # Only allow specific algorithms\n            options={'require': ['exp', 'iat', 'sub']}\n        )\n        return decoded\n    except jwt.ExpiredSignatureError:\n        raise HTTPException(401, 'Token expired')\n    except jwt.InvalidTokenError:\n        raise HTTPException(401, 'Invalid token')"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+        "https://jwt.io/introduction"
+      ]
+    }
+  },
+  "API3": {
+    "owasp_id": "API3:2023",
+    "name": "Broken Object Property Level Authorization",
+    "description": "This category combines Excessive Data Exposure and Mass Assignment. APIs may expose more data than necessary, or blindly bind client-provided data to internal objects, allowing attackers to access confidential properties or escalate privileges.",
+    "impact": "Attackers can escalate privileges (e.g., make themselves admin), expose sensitive PII, or manipulate financial data by including unauthorized fields in requests.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
+    "remediation": {
+      "summary": "Use explicit allowlists for bindable properties and never expose more data than needed.",
+      "steps": [
+        "Never automatically bind all request parameters to model objects — use explicit allowlists",
+        "Define separate request/response schemas — input schema only allows safe fields",
+        "Mark sensitive fields as write-protected or read-only at the model level",
+        "Return only the minimum data needed by the client — use response DTOs",
+        "Never return password hashes, internal IDs, audit fields, or security flags in responses",
+        "Validate that the requesting user has permission to set each provided field"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: All fields from request bound to model\n@app.post('/api/users')\nasync def create_user(user_data: dict):\n    user = User(**user_data)  # isAdmin, role etc. all accepted!\n    db.save(user)",
+        "secure": "# SECURE: Explicit allowlist using Pydantic schema\nclass CreateUserRequest(BaseModel):\n    username: str\n    email: str\n    password: str\n    # isAdmin, role, etc. NOT included — cannot be set by client\n\n@app.post('/api/users')\nasync def create_user(user_data: CreateUserRequest):\n    user = User(\n        username=user_data.username,\n        email=user_data.email,\n        password=hash(user_data.password),\n        is_admin=False,  # Always set server-side\n        role='user'      # Always set server-side\n    )\n    db.save(user)"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+      ]
+    }
+  },
+  "API4": {
+    "owasp_id": "API4:2023",
+    "name": "Unrestricted Resource Consumption",
+    "description": "Satisfying API requests requires resources such as network bandwidth, CPU, memory, and storage. Lack of rate limiting or resource controls allows attackers to abuse APIs for DoS attacks or to cause excessive costs.",
+    "impact": "Denial of Service (DoS), financial damage from cloud resource costs, slow response times for legitimate users, brute-force attacks enabled by no throttling.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
+    "remediation": {
+      "summary": "Implement rate limiting, request size limits, and resource quotas at the API gateway level.",
+      "steps": [
+        "Implement rate limiting per IP, user, and API key (e.g., 100 requests/minute per user)",
+        "Return HTTP 429 (Too Many Requests) with Retry-After header when limits are exceeded",
+        "Limit maximum request body size (e.g., 1MB) and reject larger payloads with 413",
+        "Set timeouts on all database queries and external service calls",
+        "Paginate all list endpoints — never return unlimited results",
+        "Monitor resource usage and alert on anomalous consumption patterns",
+        "Implement exponential backoff requirements for repeated failed requests"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: No rate limiting\n@app.get('/api/users')\nasync def get_users():\n    return db.get_all_users()  # Returns millions of records!",
+        "secure": "# SECURE: Rate limited + paginated\nfrom slowapi import Limiter\nlimiter = Limiter(key_func=get_remote_address)\n\n@app.get('/api/users')\n@limiter.limit('100/minute')\nasync def get_users(request: Request, page: int = 1, limit: int = 20):\n    if limit > 100:\n        raise HTTPException(400, 'Max limit is 100')\n    return db.get_users_paginated(page, limit)"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html"
+      ]
+    }
+  },
+  "API5": {
+    "owasp_id": "API5:2023",
+    "name": "Broken Function Level Authorization",
+    "description": "Complex access control policies with different hierarchies, groups, and roles, combined with unclear separation between administrative and regular functions, tend to lead to authorization flaws.",
+    "impact": "Attackers can access administrative or privileged functions, allowing them to delete users, modify system settings, access other users' data at scale, or take over the entire application.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/",
+    "remediation": {
+      "summary": "Deny all access by default and explicitly grant permissions based on user roles.",
+      "steps": [
+        "Default deny: block all access unless explicitly granted",
+        "Implement Role-Based Access Control (RBAC) or Attribute-Based Access Control (ABAC)",
+        "Move all admin functions to a separate API prefix (/admin/) and protect with role middleware",
+        "Validate the user's role on every request — never trust client-provided roles",
+        "Do not expose admin functionality based on hidden UI — attackers will find it",
+        "Audit all HTTP methods (GET, POST, PUT, DELETE) on every endpoint for each role",
+        "Regularly review which users have admin privileges"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: No role check\n@app.delete('/api/admin/users/{user_id}')\nasync def delete_user(user_id: int, token: str):\n    user = decode_token(token)  # Doesn't check if admin!\n    db.delete_user(user_id)",
+        "secure": "# SECURE: Role-based guard\ndef require_role(*roles):\n    def decorator(func):\n        async def wrapper(*args, token: str, **kwargs):\n            user = decode_token(token)\n            if user.role not in roles:\n                raise HTTPException(403, 'Insufficient permissions')\n            return await func(*args, token=token, **kwargs)\n        return wrapper\n    return decorator\n\n@app.delete('/api/admin/users/{user_id}')\n@require_role('admin', 'superadmin')\nasync def delete_user(user_id: int, token: str):\n    db.delete_user(user_id)"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Access_Control_Cheat_Sheet.html"
+      ]
+    }
+  },
+  "API6": {
+    "owasp_id": "API6:2023",
+    "name": "Unrestricted Access to Sensitive Business Flows",
+    "description": "APIs vulnerable to this risk expose a business flow — such as buying a ticket, or posting a comment — without compensating for how the functionality could harm the business if used excessively in an automated fashion.",
+    "impact": "Mass coupon fraud, ticket scalping bots, inventory manipulation, fake account creation at scale, abuse of referral/reward systems, and denial of service to legitimate users.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/",
+    "remediation": {
+      "summary": "Identify and protect business-critical flows with device fingerprinting, CAPTCHA, and flow-specific rate limits.",
+      "steps": [
+        "Identify all business-critical flows (checkout, OTP, coupon, voting, password reset)",
+        "Implement CAPTCHA or proof-of-work challenges on flows susceptible to bot abuse",
+        "Add per-user rate limits specifically for each business flow",
+        "Implement device fingerprinting to detect multiple accounts from same device",
+        "Monitor for unusual patterns (e.g., 100 coupon redemptions from single IP)",
+        "Use one-time tokens for sensitive operations (OTP should expire in 5 minutes)",
+        "Alert on anomalous usage patterns in real-time"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: No protection on coupon redemption\n@app.post('/api/coupon/apply')\nasync def apply_coupon(code: str, user_id: int):\n    coupon = db.get_coupon(code)\n    db.apply_discount(user_id, coupon.discount)  # Can be called unlimited times!",
+        "secure": "# SECURE: Rate limited + single-use validation\n@app.post('/api/coupon/apply')\n@limiter.limit('3/hour')  # Max 3 coupon attempts per hour per user\nasync def apply_coupon(code: str, current_user: User):\n    coupon = db.get_coupon(code)\n    if coupon.used_by and current_user.id in coupon.used_by:\n        raise HTTPException(409, 'Coupon already used by this account')\n    if coupon.max_uses and coupon.use_count >= coupon.max_uses:\n        raise HTTPException(410, 'Coupon exhausted')\n    db.apply_discount_atomic(current_user.id, coupon)"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Abuse_Case_Cheat_Sheet.html"
+      ]
+    }
+  },
+  "API7": {
+    "owasp_id": "API7:2023",
+    "name": "Server Side Request Forgery (SSRF)",
+    "description": "Server-Side Request Forgery flaws can occur when an API is fetching a remote resource without validating the user-supplied URL. This allows an attacker to coerce the application into sending a crafted request to an unexpected destination.",
+    "impact": "Access to internal services (databases, cloud metadata APIs), port scanning of internal network, data exfiltration, potential Remote Code Execution via internal services. AWS/GCP metadata APIs can expose cloud credentials.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa7-server-side-request-forgery/",
+    "remediation": {
+      "summary": "Validate and sanitize all user-supplied URLs using an allowlist of permitted domains.",
+      "steps": [
+        "Never accept arbitrary URLs from users — use an allowlist of permitted domains/IPs",
+        "Validate URL scheme — only allow https:// and reject file://, ftp://, gopher://, dict://",
+        "Block requests to private IP ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8",
+        "Block requests to cloud metadata endpoints: 169.254.169.254, metadata.google.internal",
+        "Resolve DNS before validating (protect against DNS rebinding attacks)",
+        "Disable unnecessary URL-fetching features in your application",
+        "Run URL-fetching functionality in an isolated network segment with no internal access"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: Fetches any URL\n@app.post('/api/fetch')\nasync def fetch_url(url: str):\n    resp = requests.get(url)  # Attacker sets url=http://169.254.169.254/latest/meta-data/\n    return resp.text",
+        "secure": "# SECURE: Strict allowlist validation\nimport ipaddress\nfrom urllib.parse import urlparse\n\nALLOWED_DOMAINS = {'api.trusted-partner.com', 'cdn.myapp.com'}\n\ndef validate_url(url: str) -> bool:\n    parsed = urlparse(url)\n    if parsed.scheme not in ['https']:\n        return False\n    if parsed.hostname in ALLOWED_DOMAINS:\n        return True\n    try:  # Block private IPs\n        ip = ipaddress.ip_address(parsed.hostname)\n        return ip.is_global\n    except ValueError:\n        return False\n\n@app.post('/api/fetch')\nasync def fetch_url(url: str):\n    if not validate_url(url):\n        raise HTTPException(400, 'URL not allowed')\n    resp = requests.get(url)\n    return resp.text"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa7-server-side-request-forgery/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://portswigger.net/web-security/ssrf"
+      ]
+    }
+  },
+  "API8": {
+    "owasp_id": "API8:2023",
+    "name": "Security Misconfiguration",
+    "description": "APIs and the systems supporting them typically contain complex configurations that can be misconfigured. Missing security hardening, unnecessary features enabled, permissive CORS, and verbose error messages all constitute security misconfigurations.",
+    "impact": "Information leakage (stack traces, internal paths), cross-origin data theft via CORS misconfiguration, unauthorized access via exposed debug endpoints, and broader attack surface for further exploitation.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/",
+    "remediation": {
+      "summary": "Apply security hardening across all layers: disable debug features, configure CORS strictly, and add security headers.",
+      "steps": [
+        "Remove all debug, test, and development endpoints from production",
+        "Configure CORS with an explicit allowlist — never use Access-Control-Allow-Origin: *",
+        "Add all required security headers: Content-Security-Policy, X-Frame-Options, Strict-Transport-Security, X-Content-Type-Options",
+        "Hide server version information (remove Server and X-Powered-By headers)",
+        "Return generic error messages — never expose stack traces to clients",
+        "Disable HTTP methods you don't use (TRACE, OPTIONS if not needed)",
+        "Keep all dependencies and frameworks up to date",
+        "Regularly audit configurations with automated tools (OWASP ZAP, nuclei)"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: Wildcard CORS + debug mode\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=['*'],  # Any origin!\n    allow_credentials=True,  # With credentials!\n)\napp = FastAPI(debug=True)  # Exposes stack traces",
+        "secure": "# SECURE: Strict CORS + no debug\nALLOWED_ORIGINS = ['https://myapp.com', 'https://app.myapp.com']\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=ALLOWED_ORIGINS,\n    allow_credentials=True,\n    allow_methods=['GET', 'POST', 'PUT', 'DELETE'],\n    allow_headers=['Authorization', 'Content-Type'],\n)\napp = FastAPI(debug=False)\n\n@app.middleware('http')\nasync def add_security_headers(request, call_next):\n    response = await call_next(request)\n    response.headers['X-Frame-Options'] = 'DENY'\n    response.headers['X-Content-Type-Options'] = 'nosniff'\n    response.headers['Strict-Transport-Security'] = 'max-age=31536000'\n    response.headers['Content-Security-Policy'] = \"default-src 'self'\"\n    return response"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html",
+        "https://securityheaders.com"
+      ]
+    }
+  },
+  "API9": {
+    "owasp_id": "API9:2023",
+    "name": "Improper Inventory Management",
+    "description": "APIs tend to expose more endpoints than traditional web applications. Proper documentation and an up-to-date inventory is extremely important. Old/deprecated API versions often lack the security controls of the current version.",
+    "impact": "Attackers find old API versions that bypass security controls added later, access undocumented internal endpoints, or exploit forgotten debug/test endpoints that were never removed from production.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/",
+    "remediation": {
+      "summary": "Maintain a complete API inventory and sunset deprecated versions with proper versioning strategy.",
+      "steps": [
+        "Maintain an always up-to-date API inventory in your API gateway or documentation",
+        "Document all API versions, their deprecation dates, and the endpoints they expose",
+        "Formally deprecate and sunset old API versions — don't leave them running indefinitely",
+        "Apply the same security controls to all API versions — never have a 'secure v2' and 'insecure v1'",
+        "Use API gateways to enforce which endpoints are accessible in production",
+        "Scan for shadow APIs (undocumented endpoints) using tools like 42Crunch or Postman",
+        "Review third-party APIs your application depends on — they may expose your data"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: Old v1 still running without auth\n@v1_router.get('/users')  # v1 has no auth!\ndef get_all_users():\n    return db.get_all_users()\n\n@v2_router.get('/users')  # v2 has auth\ndef get_users(token: str = Depends(verify_token)):\n    return db.get_users_for(token.user_id)",
+        "secure": "# SECURE: v1 redirects to v2 or is removed\nfrom fastapi.responses import JSONResponse\n\n@v1_router.get('/users')\ndef v1_users_deprecated():\n    return JSONResponse(\n        status_code=410,\n        content={'error': 'API v1 is deprecated. Use /api/v2/users'},\n        headers={'Link': '</api/v2/users>; rel=successor-version'}\n    )"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
+      ]
+    }
+  },
+  "API10": {
+    "owasp_id": "API10:2023",
+    "name": "Unsafe Consumption of APIs",
+    "description": "Developers tend to trust data received from third-party APIs more than user input. APIs that interact with third-party services may be vulnerable if the data from those services is not properly validated and sanitized before use.",
+    "impact": "Injection attacks via malicious third-party data, open redirect exploitation for phishing, credential harvesting via unvalidated redirects, and data integrity issues from unverified external sources.",
+    "owasp_url": "https://owasp.org/API-Security/editions/2023/en/0xa10-unsafe-consumption-of-apis/",
+    "remediation": {
+      "summary": "Treat all third-party API data as untrusted — validate, sanitize, and verify before use.",
+      "steps": [
+        "Validate and sanitize ALL data received from third-party APIs — treat it as untrusted user input",
+        "Never pass third-party redirect URLs directly to users — validate against allowlist first",
+        "Use strict output encoding when rendering third-party data in responses",
+        "Interact with third-party APIs only over HTTPS — never over HTTP",
+        "Implement timeouts and circuit breakers for third-party API calls",
+        "Validate the schema/structure of third-party API responses before processing",
+        "Avoid passing sensitive user data to third-party APIs unless absolutely necessary"
+      ],
+      "code_example": {
+        "language": "python",
+        "vulnerable": "# VULNERABLE: Third-party data used without validation\n@app.get('/api/user-info')\nasync def get_user_info(user_id: str):\n    # Third-party API may return malicious data\n    third_party_data = await external_api.get_user(user_id)\n    return third_party_data  # Returned as-is — may contain XSS, injection!",
+        "secure": "# SECURE: Validate third-party data against schema\nfrom pydantic import BaseModel, validator\n\nclass ThirdPartyUserSchema(BaseModel):\n    name: str\n    email: str\n    avatar_url: str\n\n    @validator('avatar_url')\n    def validate_avatar(cls, v):\n        if not v.startswith('https://trusted-cdn.com/'):\n            raise ValueError('Invalid avatar URL')\n        return v\n\n    @validator('name', 'email')\n    def sanitize_text(cls, v):\n        return v[:255].strip()  # Length limit + trim\n\n@app.get('/api/user-info')\nasync def get_user_info(user_id: str):\n    raw_data = await external_api.get_user(user_id)\n    validated = ThirdPartyUserSchema(**raw_data)  # Validate schema\n    return validated.dict()"
+      },
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa10-unsafe-consumption-of-apis/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
+      ]
+    }
+  }
+}

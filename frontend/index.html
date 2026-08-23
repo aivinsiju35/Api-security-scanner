@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Security Scanner — OWASP Top 10</title>
+  <meta name="description" content="Automated API security testing tool covering all OWASP API Top 10 vulnerabilities with CVSS scoring, CVE references, and remediation guidance." />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-wrapper">
+
+  <!-- ── Header ── -->
+  <header class="header">
+    <div class="header-logo">
+      <div class="header-logo-icon">🛡️</div>
+      <div>
+        <div class="header-title">API Security Scanner</div>
+        <div class="header-subtitle">OWASP API Top 10 · CVSS v3.1 · CVE Intelligence</div>
+      </div>
+    </div>
+    <div class="header-badge">v1.0.0</div>
+  </header>
+
+  <!-- ── Main ── -->
+  <main class="main-content">
+
+    <!-- Scan Configuration Card -->
+    <div class="scan-card" id="scan-config-card">
+      <div class="scan-form-header">
+        <div class="scan-form-header-icon">🔍</div>
+        <div>
+          <div class="scan-form-title">Configure Scan</div>
+          <div class="scan-form-subtitle">Enter your target API and select which OWASP tests to run</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="target-url">Target API URL *</label>
+          <input
+            id="target-url"
+            class="form-input"
+            type="url"
+            placeholder="https://api.example.com"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="auth-token">Bearer Token (optional)</label>
+          <input
+            id="auth-token"
+            class="form-input"
+            type="password"
+            placeholder="eyJhbGciOiJIUzI1NiJ9..."
+          />
+        </div>
+      </div>
+
+      <!-- Test selection -->
+      <div class="section-title" style="margin-top:8px">Select Tests — OWASP API Top 10</div>
+      <div class="tests-grid" id="tests-grid">
+        <!-- Populated by JS -->
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="filter-btn" id="select-all-btn" onclick="selectAllTests()">✓ Select All</button>
+        <button class="filter-btn" onclick="deselectAllTests()">✗ Deselect All</button>
+      </div>
+
+      <button class="btn-scan" id="scan-btn" onclick="startScan()">
+        <span id="scan-btn-text">⚡ Start Security Scan</span>
+      </button>
+    </div>
+
+    <!-- Dashboard Grid -->
+    <div class="content-grid" id="dashboard-grid">
+
+      <!-- Terminal log -->
+      <div>
+        <div class="section-title">Live Scan Log</div>
+        <div class="terminal-card">
+          <div class="terminal-header">
+            <div class="terminal-dot red"></div>
+            <div class="terminal-dot yellow"></div>
+            <div class="terminal-dot green"></div>
+            <span class="terminal-title">api-scanner — bash</span>
+            <div id="scan-status-indicator" class="hidden" style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:#94a3b8">
+              <div class="loading-pulse"></div>
+              <span id="scan-status-text">Scanning...</span>
+            </div>
+          </div>
+          <div class="terminal-body" id="terminal-body">
+            <div class="empty-state">
+              <div class="empty-state-icon">🖥️</div>
+              <div class="empty-state-text">Run a scan to see live output here</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary panel -->
+      <div class="summary-panel">
+        <div class="section-title">Scan Summary</div>
+
+        <div class="summary-stats" id="summary-stats">
+          <div class="stat-card">
+            <div class="stat-num stat-total" id="stat-total">—</div>
+            <div class="stat-label">Tests Run</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num stat-critical" id="stat-vulnerable">—</div>
+            <div class="stat-label">Vulnerable</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num stat-critical" id="stat-critical">—</div>
+            <div class="stat-label">Critical</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num stat-high" id="stat-high">—</div>
+            <div class="stat-label">High</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num stat-medium" id="stat-medium">—</div>
+            <div class="stat-label">Medium</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num stat-passed" id="stat-passed">—</div>
+            <div class="stat-label">Passed</div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">Severity Distribution</div>
+          <canvas id="severityChart" width="180" height="180"></canvas>
+          <div id="chart-legend" style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--text-secondary)">
+            <div class="empty-state-text">No data yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Findings -->
+    <div class="findings-section">
+      <div class="findings-header">
+        <div class="section-title" style="margin-bottom:0">Findings</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="findings-controls" id="findings-controls" style="margin-bottom:0">
+            <button class="filter-btn active" onclick="filterFindings('all', this)" id="filter-all">All</button>
+            <button class="filter-btn" onclick="filterFindings('vulnerable', this)" id="filter-vuln">Vulnerable</button>
+            <button class="filter-btn" onclick="filterFindings('passed', this)" id="filter-pass">Passed</button>
+          </div>
+          <button class="btn-export" onclick="exportJSON()" id="export-btn" style="display:none">
+            ⬇ Export JSON
+          </button>
+        </div>
+      </div>
+      <div class="findings-list" id="findings-list">
+        <div class="empty-state">
+          <div class="empty-state-icon">🔬</div>
+          <div class="empty-state-text">Findings will appear here after a scan</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
